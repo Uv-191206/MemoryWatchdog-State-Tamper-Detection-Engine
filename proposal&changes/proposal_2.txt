@@ -1,0 +1,116 @@
+In this change ,I am fixing a bug , that happened in the proposal 1 , bcz, the terminal background didn't actually get changed to blinking red color for display purposes , in order to fix those changes and make the system alert I have written a blink file implementation too.
+
+#include <iostream>
+#include <windows.h>
+#include <TlHelp32.h>
+#include <conio.h> // Required for _kbhit()
+#include <cstdlib> // Required for system()
+
+// Helper function to find a Process ID by its executable name
+DWORD GetProcId(const wchar_t* procName) {
+    DWORD procId = 0;
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W procEntry; 
+        procEntry.dwSize = sizeof(procEntry);
+
+        if (Process32FirstW(hSnap, &procEntry)) {
+            do {
+                if (!_wcsicmp(procEntry.szExeFile, procName)) {
+                    procId = procEntry.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(hSnap, &procEntry)); 
+        }
+    }
+    CloseHandle(hSnap);
+    return procId;
+}
+
+int main() {
+    // Set a dramatic title for the Watchdog terminal
+    SetConsoleTitleA("Watchdog Security Monitor - ACTIVE");
+
+    std::cout << "--- Watchdog Security Monitor ---" << std::endl;
+    
+    // 1. Find the target application
+    DWORD targetPID = GetProcId(L"app.exe"); 
+    if (targetPID == 0) {
+        system("color 0C"); // Black background, Light Red text
+        std::cout << "[ERROR] app.exe not found. Is it running?" << std::endl;
+        Sleep(2000);
+        system("color 07"); // Reset to standard
+        return 1;
+    }
+    
+    // Print Success in Green using system color
+    system("color 0A"); // Black background, Light Green text
+    std::cout << "[SUCCESS] Found app.exe (PID: " << targetPID << ")" << std::endl;
+    
+    // Reset back to normal for the input
+    system("color 07"); 
+
+    // 2. Get the memory address from the user (for demo purposes)
+    uintptr_t targetAddress;
+    std::cout << "Enter the memory address of 'isRaftBuilt' (e.g., 0x00BFF78): ";
+    std::cin >> std::hex >> targetAddress;
+
+    // 3. Ask Windows Kernel for read permissions
+    HANDLE hProcess = OpenProcess(PROCESS_VM_READ, FALSE, targetPID);
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Could not open process. Try running as Administrator." << std::endl;
+        return 1;
+    }
+
+    // 4. The Monitoring Loop
+    bool currentValue = false;
+    std::cout << "[INFO] Monitoring memory address..." << std::endl;
+    
+    while (true) {
+        ReadProcessMemory(hProcess, (BYTE*)targetAddress, &currentValue, sizeof(currentValue), nullptr);
+        
+        // Validation Logic: If the raft is built without authorization...
+        if (currentValue == true) {
+            
+            // Terminate the compromised process immediately
+            HANDLE hKill = OpenProcess(PROCESS_TERMINATE, FALSE, targetPID);
+            if (hKill != NULL) {
+                TerminateProcess(hKill, 1);
+                CloseHandle(hKill);
+            }
+
+            // --- VISUAL ALARM TRIGGER ---
+            // Change title to reflect emergency
+            SetConsoleTitleA("!!! SECURITY BREACH DETECTED !!!");
+            
+            std::cout << "\n[VIOLATION] Illegal state change detected at address 0x" << std::hex << targetAddress << std::endl;
+            std::cout << "[ACTION] Terminated compromised process (app.exe) to prevent further injection." << std::endl;
+            std::cout << "\n>>> SYSTEM ALERT: Press ANY KEY to acknowledge threat and exit Watchdog <<<" << std::endl;
+
+            bool isRedBackground = true;
+            
+            // Loop blinks the entire console canvas until a key is pressed
+            while (!_kbhit()) {
+                if (isRedBackground) {
+                    system("color 47"); // Red background, White text
+                } else {
+                    system("color 07"); // Black background, White text
+                }
+                
+                isRedBackground = !isRedBackground;
+                Sleep(500); // 500ms delay from your reference code
+            }
+
+            // The user pressed a key. Consume that keypress so it doesn't spill over.
+            _getch(); 
+
+            // Reset console color back to default normal before exiting
+            system("color 07");
+            break; // Break out of the monitoring loop
+        }
+        Sleep(1000); // Check every second
+    }
+
+    CloseHandle(hProcess);
+    return 0;
+}

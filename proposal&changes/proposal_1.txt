@@ -1,0 +1,129 @@
+This is proposal for changes part 1 . 
+Now the changes that we currently make in this one is that , the previous written watchdog code , was not having the purpose of actually allowing the administrator to know whether it was just a technically stop done due to watchdog actions or really a bug which shows target: app shutdown in order to not compromise safety. 
+
+-> Thus there is an intension for changing ie :
+In our current setup, the Watchdog terminates the App (the victim), not the Hack. Why? Because by the time the Watchdog sees the memory change, the Hack has already done its job and might have even closed. In real-world Endpoint Detection and Response (EDR) systems, if an application's memory is successfully compromised, the safest protocol is to instantly kill the compromised application to prevent the hacker from using it to reach deeper into the system.
+Here is the updated watchdog.cpp code. I have added the Windows console color attributes and an infinite blinking loop that acts as a visual "siren" until you press a key to acknowledge the threat.
+
+
+some common features :
+What happens now during the demo:
+When you run the Watchdog, it will print the "Found app.exe" message in bright green.
+
+It monitors silently as usual.
+
+The absolute millisecond you press "Enter" in the Hack window, the Watchdog will kill the App.
+
+The Watchdog terminal will immediately start flashing between a Solid Red Block with White Text and Black with Red Text like a strobe light.
+
+It will not stop flashing until you physically press a key (like Spacebar or Enter) on that specific terminal window, showing the evaluator that the system requires administrator acknowledgment after a breach.
+
+
+The new code is as follows :
+#include <iostream>
+#include <windows.h>
+#include <TlHelp32.h>
+#include <conio.h> // Required for _kbhit() to detect key presses
+
+// Helper function to find a Process ID by its executable name
+DWORD GetProcId(const wchar_t* procName) {
+    DWORD procId = 0;
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W procEntry; 
+        procEntry.dwSize = sizeof(procEntry);
+
+        if (Process32FirstW(hSnap, &procEntry)) {
+            do {
+                if (!_wcsicmp(procEntry.szExeFile, procName)) {
+                    procId = procEntry.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(hSnap, &procEntry)); 
+        }
+    }
+    CloseHandle(hSnap);
+    return procId;
+}
+
+int main() {
+    // Get the handle for the console so we can change colors later
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    
+    std::cout << "--- Watchdog Security Monitor ---" << std::endl;
+    
+    // 1. Find the target application
+    DWORD targetPID = GetProcId(L"app.exe"); 
+    if (targetPID == 0) {
+        // Print Error in Red
+        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+        std::cout << "[ERROR] app.exe not found. Is it running?" << std::endl;
+        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); // Reset
+        return 1;
+    }
+    
+    // Print Success in Green
+    SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+    std::cout << "[SUCCESS] Found app.exe (PID: " << targetPID << ")" << std::endl;
+    SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); // Reset
+
+    // 2. Get the memory address from the user (for demo purposes)
+    uintptr_t targetAddress;
+    std::cout << "Enter the memory address of 'isRaftBuilt' (e.g., 0x00BFF78): ";
+    std::cin >> std::hex >> targetAddress;
+
+    // 3. Ask Windows Kernel for read permissions
+    HANDLE hProcess = OpenProcess(PROCESS_VM_READ, FALSE, targetPID);
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Could not open process. Try running as Administrator." << std::endl;
+        return 1;
+    }
+
+    // 4. The Monitoring Loop
+    bool currentValue = false;
+    std::cout << "[INFO] Monitoring memory address..." << std::endl;
+    
+    while (true) {
+        ReadProcessMemory(hProcess, (BYTE*)targetAddress, &currentValue, sizeof(currentValue), nullptr);
+        
+        // Validation Logic: If the raft is built without authorization...
+        if (currentValue == true) {
+            
+            // Terminate the compromised process immediately to secure the system
+            HANDLE hKill = OpenProcess(PROCESS_TERMINATE, FALSE, targetPID);
+            if (hKill != NULL) {
+                TerminateProcess(hKill, 1);
+                CloseHandle(hKill);
+            }
+
+            // --- VISUAL ALARM TRIGGER ---
+            std::cout << "\n[VIOLATION] Illegal state change detected at address 0x" << std::hex << targetAddress << std::endl;
+            std::cout << "[ACTION] Terminated compromised process (app.exe) to prevent further injection." << std::endl;
+            std::cout << "\n>>> SYSTEM ALERT: Press ANY KEY to acknowledge threat and exit Watchdog <<<" << std::endl;
+
+            bool isRedBackground = false;
+            
+            // Loop blinks the console until the user presses a key on the keyboard
+            while (!_kbhit()) {
+                if (isRedBackground) {
+                    // Intense Red Background with Bright White Text
+                    SetConsoleTextAttribute(hConsole, BACKGROUND_RED | BACKGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+                } else {
+                    // Black Background with Intense Red Text
+                    SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+                }
+                
+                isRedBackground = !isRedBackground;
+                Sleep(350); // Blink every 350 milliseconds
+            }
+
+            // Reset console colors back to default normal before exiting
+            SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+            break; // Break out of the monitoring loop
+        }
+        Sleep(1000); // Check every second
+    }
+
+    CloseHandle(hProcess);
+    return 0;
+}

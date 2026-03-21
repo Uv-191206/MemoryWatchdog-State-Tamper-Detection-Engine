@@ -1,0 +1,268 @@
+At almost the last stage for making the softkill architecture work. 
+3 highly refactored codes 
+
+app.cpp->
+#include <iostream>
+#include <windows.h>
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream> 
+
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+int main() {
+    SetConsoleTitleA("Shipwreck Environment (Target)");
+
+    // UPGRADE: Changed from bool to int so it can hold multiple states
+    // 0 = Normal, 1 = Hack Injected, 99 = Watchdog Lockdown Signal
+    int collectedWood = 0;
+    int environmentState = 0; 
+
+    DWORD pid = GetCurrentProcessId();
+
+    std::cout << "--- Shipwreck Island Survival ---" << std::endl;
+    std::cout << "[INFO] Process ID (PID): " << pid << std::endl;
+    std::cout << "[INFO] Address of 'environmentState': 0x" << std::hex << (uintptr_t)&environmentState << std::endl;
+    std::cout << "---------------------------------" << std::endl;
+
+    LogEvent("[APP] SYSTEM STARTUP: Shipwreck Island Environment initialized. (PID: " + std::to_string(pid) + ")");
+    std::stringstream ss;
+    ss << std::hex << (uintptr_t)&environmentState;
+    LogEvent("[APP] STATE GENERATED: 'environmentState' allocated at 0x" + ss.str() + ".");
+
+    // The Game Loop
+    while (true) {
+        
+        // 1. Check if the Hack won
+        if (environmentState == 1) {
+            std::cout << "\n[CRITICAL EVENT] The raft is built! You escaped the island!" << std::endl;
+            break; 
+        }
+        
+        // 2. THE NEW ENDPOINT DETECTION LINE (Check if Watchdog neutralized the hack)
+        else if (environmentState == 99) {
+            std::cout << "\n\n[SYSTEM] WATCHDOG INTERVENTION DETECTED." << std::endl;
+            std::cout << "[SYSTEM] Tampered state neutralized. Changes reversed." << std::endl;
+            std::cout << "[SYSTEM] Process over / return 0 success. You may exit safely." << std::endl;
+            LogEvent("[APP] SAFE SHUTDOWN: Watchdog signal received. Exiting cleanly.");
+            break; // Breaks the loop cleanly so the app can return 0
+        }
+        
+        std::cout << "Exploring... Wood: " << std::dec << collectedWood << ". State: " << environmentState << "    \r" << std::flush;
+        
+        // Responsive Sleep: Check memory 10 times over 2 seconds
+        for(int i = 0; i < 10; i++) {
+            if(environmentState != 0) break; // Wake up instantly if memory changes!
+            Sleep(200); 
+        }
+    }
+
+    std::cout << "\nGame Over. Press Enter to exit." << std::endl;
+    std::cin.get();
+    return 0;
+}
+
+
+
+hack.cpp->
+
+#include <iostream>
+#include <windows.h>
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream>
+
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+int main() {
+    std::cout << "--- State Injector ---" << std::endl;
+
+    DWORD targetPID;
+    uintptr_t targetAddress;
+
+    std::cout << "Enter the Target PID: ";
+    std::cin >> std::dec >> targetPID;
+
+    std::cout << "Enter the Target Memory Address (Hex): ";
+    std::cin >> std::hex >> targetAddress;
+
+    std::stringstream ss;
+    ss << std::hex << targetAddress;
+    LogEvent("[HACK] INJECTION INITIATED: Attempting to overwrite memory at 0x" + ss.str() + " for PID " + std::to_string(targetPID) + ".");
+
+    HANDLE hProcess = OpenProcess(PROCESS_VM_WRITE | PROCESS_VM_OPERATION, FALSE, targetPID);
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Failed to get handle. Code: " << GetLastError() << std::endl;
+        LogEvent("[HACK] FAILED: Could not obtain handle to target process.");
+        return 1;
+    }
+
+    // UPGRADE: Changed to 'int 1' to match the new environmentState logic
+    int exploitValue = 1;
+    std::cout << "Attempting to inject true state into memory..." << std::endl;
+
+    BOOL success = WriteProcessMemory(hProcess, (LPVOID)targetAddress, &exploitValue, sizeof(exploitValue), nullptr);
+
+    if (success) {
+        std::cout << "[SUCCESS] Memory overwritten. Hidden event triggered." << std::endl;
+        LogEvent("[HACK] PAYLOAD DELIVERED: Memory successfully overwritten. Hidden event triggered.");
+    } else {
+        std::cout << "[FAILED] Write operation blocked." << std::endl;
+    }
+
+    CloseHandle(hProcess);
+    std::cout << "Press Enter to exit." << std::endl;
+    std::cin.ignore();
+    std::cin.get();
+    return 0;
+}
+
+
+watchdog.cpp->
+#include <iostream>
+#include <windows.h>
+#include <TlHelp32.h>
+#include <conio.h> 
+#include <cstdlib> 
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream>
+
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+DWORD GetProcId(const wchar_t* procName) {
+    DWORD procId = 0;
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W procEntry; 
+        procEntry.dwSize = sizeof(procEntry);
+        if (Process32FirstW(hSnap, &procEntry)) {
+            do {
+                if (!_wcsicmp(procEntry.szExeFile, procName)) {
+                    procId = procEntry.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(hSnap, &procEntry)); 
+        }
+    }
+    CloseHandle(hSnap);
+    return procId;
+}
+
+int main() {
+    SetConsoleTitleA("Watchdog Security Monitor - ACTIVE");
+    std::cout << "--- Watchdog Security Monitor ---" << std::endl;
+    
+    DWORD targetPID = GetProcId(L"app.exe"); 
+    if (targetPID == 0) {
+        system("color 0C"); 
+        std::cout << "[ERROR] app.exe not found. Is it running?" << std::endl;
+        Sleep(2000);
+        system("color 07"); 
+        return 1;
+    }
+    
+    system("color 0A"); 
+    std::cout << "[SUCCESS] Found app.exe (PID: " << targetPID << ")" << std::endl;
+    system("color 07"); 
+
+    LogEvent("[WATCHDOG] INITIALIZED: Successfully attached to app.exe target (PID: " + std::to_string(targetPID) + ").");
+
+    uintptr_t targetAddress;
+    std::cout << "Enter the memory address of 'environmentState' (e.g., 0x00BFF78): ";
+    std::cin >> std::hex >> targetAddress;
+
+    // UPGRADE: Watchdog needs WRITE permissions now to neutralize the hack
+    HANDLE hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, FALSE, targetPID);
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Could not open process. Try running as Administrator." << std::endl;
+        return 1;
+    }
+
+    int currentValue = 0; // Upgraded to int
+    std::cout << "[INFO] Monitoring memory address..." << std::endl;
+    
+    std::stringstream ss;
+    ss << std::hex << targetAddress;
+    LogEvent("[WATCHDOG] MONITORING: Actively scanning virtual memory address 0x" + ss.str() + ".");
+    
+    while (true) {
+        ReadProcessMemory(hProcess, (BYTE*)targetAddress, &currentValue, sizeof(currentValue), nullptr);
+        
+        // Validation Logic: Did the Hack inject a '1'?
+        if (currentValue == 1) {
+            
+            // --- THE NEUTRALIZER ---
+            // Overwrite the hack with the '99' Lockdown Signal
+            int lockdownSignal = 99;
+            WriteProcessMemory(hProcess, (LPVOID)targetAddress, &lockdownSignal, sizeof(lockdownSignal), nullptr);
+            
+            LogEvent("[WATCHDOG] SECURITY ALARM: Illegal state change detected at address 0x" + ss.str() + "!");
+            LogEvent("[WATCHDOG] ACTION TAKEN: Neutralizing signal sent. Forcing safe shutdown sequence.");
+
+            SetConsoleTitleA("!!! SECURITY BREACH DETECTED !!!");
+            std::cout << "\n[VIOLATION] Illegal state change detected at address 0x" << std::hex << targetAddress << std::endl;
+            std::cout << "[ACTION] Hack neutralized. Signaled app.exe to initiate safe shutdown." << std::endl;
+            std::cout << "\n>>> SYSTEM ALERT: Press ANY KEY to acknowledge threat and exit Watchdog <<<" << std::endl;
+
+            // Wait 2.5 seconds to ensure app.cpp has time to read the '99' and print its message
+            Sleep(2500);
+
+            // Optional: Hard Kill fallback (Enterprise EDR standard)
+            HANDLE hKill = OpenProcess(PROCESS_TERMINATE, FALSE, targetPID);
+            if (hKill != NULL) {
+                TerminateProcess(hKill, 1);
+                CloseHandle(hKill);
+            }
+
+            bool isRedBackground = true;
+            while (!_kbhit()) {
+                if (isRedBackground) system("color 47"); 
+                else system("color 07"); 
+                isRedBackground = !isRedBackground;
+                Sleep(500); 
+            }
+
+            _getch(); 
+            LogEvent("[WATCHDOG] SYSTEM ALERT: Administrator acknowledged threat. Shutting down monitor.");
+            system("color 07");
+            break; 
+        }
+        Sleep(1000); 
+    }
+
+    CloseHandle(hProcess);
+    return 0;
+}
+
+The main folder also contains system_audit_logs too for the entire event process handle. 

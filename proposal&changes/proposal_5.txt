@@ -1,0 +1,145 @@
+Here is a newer version of watchdog.cpp , In this patch I have tried exploring real windows native os 
+sound/audio functions , By using those functions I can get the siren alert notification for the viewer or the operator at times in case if no one pays attention or admin is busy working with different work . 
+ALso  a monitor like this is key purposefully designed just so that , we can have advantage of audio , visual aid pair , for longterm search and elimination of breaches.
+
+new code for cpp is as follow: ->
+
+#include <iostream>
+#include <windows.h>
+#include <TlHelp32.h>
+#include <conio.h> 
+#include <cstdlib> 
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream>
+
+// Centralized Logging Function
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+// Process ID Scanner
+DWORD GetProcId(const wchar_t* procName) {
+    DWORD procId = 0;
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W procEntry; 
+        procEntry.dwSize = sizeof(procEntry);
+        if (Process32FirstW(hSnap, &procEntry)) {
+            do {
+                if (!_wcsicmp(procEntry.szExeFile, procName)) {
+                    procId = procEntry.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(hSnap, &procEntry)); 
+        }
+    }
+    CloseHandle(hSnap);
+    return procId;
+}
+
+int main() {
+    SetConsoleTitleA("Watchdog Security Monitor - ACTIVE");
+    std::cout << "--- Watchdog Security Monitor ---" << std::endl;
+    
+    // 1. Find the target application
+    DWORD targetPID = GetProcId(L"app.exe"); 
+    if (targetPID == 0) {
+        system("color 0C"); 
+        std::cout << "[ERROR] app.exe not found. Is it running?" << std::endl;
+        Sleep(2000);
+        system("color 07"); 
+        return 1;
+    }
+    
+    system("color 0A"); 
+    std::cout << "[SUCCESS] Found app.exe (PID: " << targetPID << ")" << std::endl;
+    system("color 07"); 
+
+    LogEvent("[WATCHDOG] INITIALIZED: Successfully attached to app.exe target (PID: " + std::to_string(targetPID) + ").");
+
+    // 2. Get the memory address
+    uintptr_t targetAddress;
+    std::cout << "Enter the memory address of 'environmentState' (e.g., 0x00BFF78): ";
+    std::cin >> std::hex >> targetAddress;
+
+    // 3. Open Process with READ and WRITE permissions
+    HANDLE hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, FALSE, targetPID);
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Could not open process. Try running as Administrator." << std::endl;
+        return 1;
+    }
+
+    int currentValue = 0; 
+    std::cout << "[INFO] Monitoring memory address..." << std::endl;
+    
+    std::stringstream ss;
+    ss << std::hex << targetAddress;
+    LogEvent("[WATCHDOG] MONITORING: Actively scanning virtual memory address 0x" + ss.str() + ".");
+    
+    // 4. The Active Monitoring Loop
+    while (true) {
+        ReadProcessMemory(hProcess, (BYTE*)targetAddress, &currentValue, sizeof(currentValue), nullptr);
+        
+        // Validation Logic: Did the Hack inject a '1'?
+        if (currentValue == 1) {
+            
+            // --- THE NEUTRALIZER ---
+            // Overwrite the hack with the '99' Lockdown Signal
+            int lockdownSignal = 99;
+            WriteProcessMemory(hProcess, (LPVOID)targetAddress, &lockdownSignal, sizeof(lockdownSignal), nullptr);
+            
+            LogEvent("[WATCHDOG] SECURITY ALARM: Illegal state change detected at address 0x" + ss.str() + "!");
+            LogEvent("[WATCHDOG] ACTION TAKEN: Neutralizing signal sent. Forcing safe shutdown sequence.");
+
+            SetConsoleTitleA("!!! SECURITY BREACH DETECTED !!!");
+            std::cout << "\n[VIOLATION] Illegal state change detected at address 0x" << std::hex << targetAddress << std::endl;
+            std::cout << "[ACTION] Hack neutralized. Signaled app.exe to initiate safe shutdown." << std::endl;
+            
+            // Wait 2.5 seconds to ensure app.cpp has time to read the '99' and print its exit message
+            Sleep(2500);
+
+            // Enterprise EDR standard: Hard Kill fallback just in case the app freezes
+            HANDLE hKill = OpenProcess(PROCESS_TERMINATE, FALSE, targetPID);
+            if (hKill != NULL) {
+                TerminateProcess(hKill, 1);
+                CloseHandle(hKill);
+            }
+
+            std::cout << "\n>>> SYSTEM ALERT: Press ANY KEY to acknowledge threat and exit Watchdog <<<" << std::endl;
+
+            // --- VISUAL & AUDIO ALARM LOOP ---
+            bool isRedBackground = true;
+            
+            while (!_kbhit()) {
+                if (isRedBackground) {
+                    system("color 47"); // Red background, white text
+                    Beep(880, 500);     // High pitch (Note A5) for 500ms
+                } else {
+                    system("color 07"); // Black background, white text
+                    Beep(659, 500);     // Lower pitch (Note E5) for 500ms
+                }
+                
+                isRedBackground = !isRedBackground;
+            }
+
+            _getch(); // Consume the keypress so it doesn't spill into the terminal later
+            
+            LogEvent("[WATCHDOG] SYSTEM ALERT: Administrator acknowledged threat. Shutting down monitor.");
+            system("color 07"); // Reset colors to normal
+            break; 
+        }
+        Sleep(1000); 
+    }
+
+    CloseHandle(hProcess);
+    return 0;
+}

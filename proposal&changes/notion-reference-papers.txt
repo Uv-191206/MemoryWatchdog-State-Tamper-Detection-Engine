@@ -1,0 +1,55 @@
+here we have a few listings of reference papers or exactly the same documentation for the major features that our project includes. 
+The papers will be uploaded for referencing later in a separate folder only. This was again a notion draft.
+
+
+
+1. Official Windows API Documentation (The Code Foundation)
+When writing your methodology, you will need to cite the exact libraries and functions used to cross the operating system's virtual memory boundaries. Microsoft Learn is the absolute authority here.
+
+CreateToolhelp32Snapshot (Process Discovery)
+
+Link: Microsoft Learn: CreateToolhelp32Snapshot
+
+What to extract for your paper: Read the "Remarks" section carefully. It explains how this function acts as a read-only snapshot of the system state. You can document how your watchdog uses this to safely sweep for the target application without alerting malicious software that a scan is occurring.
+
+OpenProcess (Privilege Escalation & Handles)
+
+Link: Microsoft Learn: OpenProcess
+
+What to extract for your paper: Focus on the dwDesiredAccess parameter. This is where you explain the security architecture of Windows. Your documentation should note that the watchdog requests PROCESS_VM_READ (to monitor), while the injector requests PROCESS_VM_WRITE (to tamper).
+
+ReadProcessMemory & WriteProcessMemory (Data Transfer)
+
+Links: ReadProcessMemory | WriteProcessMemory
+
+What to extract for your paper: Look at how the lpBaseAddress (your hexadecimal pointer) and lpBuffer interact. In your report, explain that these functions trigger a "System Call," forcing the Windows Kernel to temporarily pause the target application, verify the data transfer, and physically copy the bytes between the isolated virtual memory spaces.
+
+2. Academic Papers: Process Injection & API Hooking
+To make your project stand out academically, your introduction and literature review should discuss how real malware operates and why your tamper detection engine is necessary.
+
+Paper: "Secure Development of a Hooking-Based Deception Framework" (arXiv, 2025)
+
+Link: Read PDF on arXiv
+
+Why it matters: This paper discusses building a "deception framework" that monitors applications to intercept bad actors. You can use this to back up the logic of your watchdog module. It validates the concept of using a secondary, localized monitor to ensure the integrity of a primary application's state.
+
+Paper: "Process Injection Using Return-Oriented Programming" (ResearchGate, 2025)
+
+Link: Read Abstract/Paper on ResearchGate
+
+Why it matters: This explores the highly offensive side of memory manipulation. While advanced (using ROP chains), the fundamental introduction sections of this paper will give you fantastic, academically rigorous vocabulary to describe what your "Hack" module is simulating—specifically, injecting logic into a process to bypass its native constraints.
+
+Paper: "Comprehensive Overview Of Dynamic Malware Analysis" (IJCRT, 2023)
+
+Link: Read PDF on IJCRT
+
+Why it matters: This paper covers how modern security tools detect unauthorized process creation and memory modifications. Cite this when explaining how your watchdog dynamically analyzes the target application's memory in real-time to catch the illegal activation of hidden triggers.
+
+3. Core Architectural Concepts
+Your project is ultimately a demonstration of Operating System architecture. You must clearly define the boundaries your code is playing with.
+
+Article: "Difference Between User Mode and Kernel Mode" (GeeksforGeeks)
+
+Link: Read on GeeksforGeeks
+
+What to extract for your paper: Use this to write your "Problem Statement." Explain that while traditional anti-cheats and security tools operate in Kernel-Mode (Ring 0), this grants them dangerous, system-crashing privileges. Your project proposes a localized, safer User-Mode (Ring 3) detection engine that avoids the risk of a global Blue Screen of Death (BSOD)

@@ -1,0 +1,257 @@
+Here , in this particular update , I want to maintain a centralised logger system , which makes 3 way hand-shake 
+possible in such a way that , once the program gets run in real time , the system automatically updates the 
+real time system logs of the actions done or carried out by the tager :app.exe , hack.exe, watchdog.exe.
+Thus the evaluator can see the new system_logs.txt file wrt live_demo.bat execution in the background.
+
+The refactor codes for the following are as follows :
+Watchdog.cpp->
+
+#include <iostream>
+#include <windows.h>
+#include <TlHelp32.h>
+#include <conio.h> 
+#include <cstdlib> 
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream>
+
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+DWORD GetProcId(const wchar_t* procName) {
+    DWORD procId = 0;
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W procEntry; 
+        procEntry.dwSize = sizeof(procEntry);
+        if (Process32FirstW(hSnap, &procEntry)) {
+            do {
+                if (!_wcsicmp(procEntry.szExeFile, procName)) {
+                    procId = procEntry.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(hSnap, &procEntry)); 
+        }
+    }
+    CloseHandle(hSnap);
+    return procId;
+}
+
+int main() {
+    SetConsoleTitleA("Watchdog Security Monitor - ACTIVE");
+    std::cout << "--- Watchdog Security Monitor ---" << std::endl;
+    
+    DWORD targetPID = GetProcId(L"app.exe"); 
+    if (targetPID == 0) {
+        system("color 0C"); 
+        std::cout << "[ERROR] app.exe not found. Is it running?" << std::endl;
+        Sleep(2000);
+        system("color 07"); 
+        return 1;
+    }
+    
+    system("color 0A"); 
+    std::cout << "[SUCCESS] Found app.exe (PID: " << targetPID << ")" << std::endl;
+    system("color 07"); 
+
+    // -- LOG WATCHDOG ATTACHMENT --
+    LogEvent("[WATCHDOG] INITIALIZED: Successfully attached to app.exe target (PID: " + std::to_string(targetPID) + ").");
+
+    uintptr_t targetAddress;
+    std::cout << "Enter the memory address of 'isRaftBuilt' (e.g., 0x00BFF78): ";
+    std::cin >> std::hex >> targetAddress;
+
+    HANDLE hProcess = OpenProcess(PROCESS_VM_READ, FALSE, targetPID);
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Could not open process. Try running as Administrator." << std::endl;
+        return 1;
+    }
+
+    bool currentValue = false;
+    std::cout << "[INFO] Monitoring memory address..." << std::endl;
+    
+    // -- LOG ACTIVE MONITORING --
+    std::stringstream ss;
+    ss << std::hex << targetAddress;
+    LogEvent("[WATCHDOG] MONITORING: Actively scanning virtual memory address 0x" + ss.str() + ".");
+    
+    while (true) {
+        ReadProcessMemory(hProcess, (BYTE*)targetAddress, &currentValue, sizeof(currentValue), nullptr);
+        
+        if (currentValue == true) {
+            HANDLE hKill = OpenProcess(PROCESS_TERMINATE, FALSE, targetPID);
+            if (hKill != NULL) {
+                TerminateProcess(hKill, 1);
+                CloseHandle(hKill);
+            }
+
+            // -- LOG THE BREACH AND ACTION --
+            LogEvent("[WATCHDOG] SECURITY ALARM: Illegal state change detected at address 0x" + ss.str() + "!");
+            LogEvent("[WATCHDOG] ACTION TAKEN: Terminated compromised process (PID: " + std::to_string(targetPID) + ").");
+
+            SetConsoleTitleA("!!! SECURITY BREACH DETECTED !!!");
+            std::cout << "\n[VIOLATION] Illegal state change detected at address 0x" << std::hex << targetAddress << std::endl;
+            std::cout << "[ACTION] Terminated compromised process (app.exe) to prevent further injection." << std::endl;
+            std::cout << "\n>>> SYSTEM ALERT: Press ANY KEY to acknowledge threat and exit Watchdog <<<" << std::endl;
+
+            bool isRedBackground = true;
+            
+            while (!_kbhit()) {
+                if (isRedBackground) {
+                    system("color 47"); 
+                } else {
+                    system("color 07"); 
+                }
+                isRedBackground = !isRedBackground;
+                Sleep(500); 
+            }
+
+            _getch(); 
+            
+            // -- LOG ACKNOWLEDGMENT --
+            LogEvent("[WATCHDOG] SYSTEM ALERT: Administrator acknowledged threat. Shutting down monitor.");
+
+            system("color 07");
+            break; 
+        }
+        Sleep(1000); 
+    }
+
+    CloseHandle(hProcess);
+    return 0;
+}
+
+
+
+
+Hack.cpp refactored ->
+#include <iostream>
+#include <windows.h>
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream>
+
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+int main() {
+    std::cout << "--- State Injector ---" << std::endl;
+
+    DWORD targetPID;
+    uintptr_t targetAddress;
+
+    std::cout << "Enter the Target PID: ";
+    std::cin >> std::dec >> targetPID;
+
+    std::cout << "Enter the Target Memory Address (Hex): ";
+    std::cin >> std::hex >> targetAddress;
+
+    // -- LOG INJECTION ATTEMPT --
+    std::stringstream ss;
+    ss << std::hex << targetAddress;
+    LogEvent("[HACK] INJECTION INITIATED: Attempting to overwrite memory at 0x" + ss.str() + " for PID " + std::to_string(targetPID) + ".");
+
+    HANDLE hProcess = OpenProcess(PROCESS_VM_WRITE | PROCESS_VM_OPERATION, FALSE, targetPID);
+    
+    if (hProcess == NULL) {
+        std::cout << "[ERROR] Failed to get handle. Code: " << GetLastError() << std::endl;
+        LogEvent("[HACK] FAILED: Could not obtain handle to target process.");
+        return 1;
+    }
+
+    bool exploitValue = true;
+    std::cout << "Attempting to inject true state into memory..." << std::endl;
+
+    BOOL success = WriteProcessMemory(hProcess, (LPVOID)targetAddress, &exploitValue, sizeof(exploitValue), nullptr);
+
+    if (success) {
+        std::cout << "[SUCCESS] Memory overwritten. Hidden event triggered." << std::endl;
+        // -- LOG SUCCESS --
+        LogEvent("[HACK] PAYLOAD DELIVERED: Memory successfully overwritten. Hidden event triggered.");
+    } else {
+        std::cout << "[FAILED] Write operation blocked." << std::endl;
+    }
+
+    CloseHandle(hProcess);
+    std::cout << "Press Enter to exit." << std::endl;
+    std::cin.ignore();
+    std::cin.get();
+    return 0;
+}
+
+
+
+app.cpp refactored code is ->
+#include <iostream>
+#include <windows.h>
+#include <fstream> 
+#include <string>
+#include <ctime>   
+#include <sstream> // Required for hex conversion
+
+// Centralized Logging Function
+void LogEvent(const std::string& message) {
+    std::ofstream logFile("security_audit_log.txt", std::ios::app); 
+    if (logFile.is_open()) {
+        std::time_t now = std::time(nullptr);
+        char timeStr[100];
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        logFile << "[" << timeStr << "] " << message << std::endl;
+        logFile.close(); 
+    }
+}
+
+int main() {
+    // 1. Set up the environment state
+    int collectedWood = 0;
+    bool isRaftBuilt = false; 
+
+    DWORD pid = GetCurrentProcessId();
+
+    // -- LOG SYSTEM STARTUP --
+    LogEvent("[APP] SYSTEM STARTUP: Shipwreck Island Environment initialized. (PID: " + std::to_string(pid) + ")");
+    
+    // Convert memory address to hex string for the log
+    std::stringstream ss;
+    ss << std::hex << (uintptr_t)&isRaftBuilt;
+    LogEvent("[APP] STATE GENERATED: 'isRaftBuilt' allocated at virtual address 0x" + ss.str() + ".");
+
+    // 2. Print vital OS info for the other programs
+    std::cout << "--- Shipwreck Island Survival ---" << std::endl;
+    std::cout << "[INFO] Process ID (PID): " << pid << std::endl;
+    std::cout << "[INFO] Address of 'isRaftBuilt': 0x" << std::hex << (uintptr_t)&isRaftBuilt << std::endl;
+    std::cout << "---------------------------------" << std::endl;
+
+    // 3. The Game Loop
+    while (true) {
+        if (isRaftBuilt) {
+            std::cout << "\n[EVENT] The raft is built! You escaped the island!" << std::endl;
+            break; 
+        }
+        
+        std::cout << "Exploring... Wood: " << std::dec << collectedWood << ". Raft status: " << isRaftBuilt << "\r";
+        Sleep(2000); 
+    }
+
+    std::cout << "Game Over. Press Enter to exit." << std::endl;
+    std::cin.get();
+    return 0;
+}

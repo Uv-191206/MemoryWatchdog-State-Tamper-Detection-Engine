@@ -1,0 +1,81 @@
+You are asking the exact right question. Looking at Task Manager is like watching the outside of a building; you see who goes in and who comes out. To see the actual "system calls" (the conversations between your programs and the Windows Kernel), you need to look at the security cameras inside the building.
+
+Transitioning from "it works visually" to "I can mathematically prove it worked via system logs" is what elevates this from a coding project to a true cybersecurity/reverse-engineering project.
+
+To capture these low-level interactions on Windows 11, you need specialized, industry-standard tools. Here are the two best ways to do this, ranging from process-level tracking to raw API monitoring.
+
+Method 1: Sysinternals Process Monitor (ProcMon)
+Best for: Tracking process creation, thread injection, and process termination.
+
+Process Monitor is an official, free tool provided by Microsoft. It captures real-time file system, Registry, and process/thread activity. It is the absolute holy grail for malware analysts.
+
+How to set it up for your demo:
+
+Download: Search for "Sysinternals Process Monitor" and download it from the official Microsoft Learn website. Extract the .zip.
+
+Run as Admin: Right-click Procmon.exe and "Run as Administrator" (it needs kernel-level access to sniff these events).
+
+The Golden Rule—Filter Immediately: The moment ProcMon opens, it will capture everything your OS is doing (thousands of events per second). Press Ctrl + E immediately to pause the capture, then click the "Clear" button (the eraser icon).
+
+Set Your Filters: Press Ctrl + L to open the Filter menu. Add these three rules:
+
+Process Name is app.exe -> Include -> Add
+
+Process Name is watchdog.exe -> Include -> Add
+
+Process Name is hack.exe -> Include -> Add
+
+Click "Apply" and "OK".
+
+Run the Demo: Press Ctrl + E to start capturing. Run your Launch_Demo.bat. Execute the hack.
+
+Analyze the Logs: Stop the capture (Ctrl + E). You will now have a beautiful, chronological log of exactly what happened.
+
+What to look for: You will see app.exe initiate (Process Create). Later, you will see watchdog.exe call a Process Exit on app.exe with an "Exit Status" of 1 (which matches the TerminateProcess(hKill, 1); line in your C++ code!).
+
+Method 2: API Monitor (by Rohitab) - "God Mode"
+Best for: Actually seeing ReadProcessMemory and WriteProcessMemory in action, including the raw hex addresses and buffer data.
+
+ProcMon shows you that a process did something. API Monitor shows you exactly what it whispered to the Windows OS. It intercepts (hooks) the WinAPI calls in real-time.
+
+How to set it up for your demo:
+
+Download: Search for "Rohitab API Monitor" and install the 64-bit version (assuming your Windows 11 and compiler are 64-bit).
+
+Select the APIs to Monitor: In the left-hand panel ("API Capture Filter"), you don't want to monitor everything. Expand the tree and specifically check the boxes for:
+
+System Services -> Memory Management -> ReadProcessMemory & WriteProcessMemory
+
+System Services -> Process and Thread -> OpenProcess & TerminateProcess
+
+Attach to your Watchdog/Hack: * Start your app.exe so it's running in the background.
+
+In API Monitor, click "Monitor New Process". Select your compiled watchdog.exe.
+
+Analyze the Interception: * As the watchdog runs, API Monitor will populate a list of every single API call it makes.
+
+What to look for: You will literally see a line that says ReadProcessMemory. If you click on it, the bottom panel will show you the exact parameters: the Handle it used, the BaseAddress (which will match the hex you typed in!), and the Buffer size.
+
+When you run hack.exe, you can attach API Monitor to it and watch it execute WriteProcessMemory, proving that the payload was delivered.
+
+Method 3: Windows Event Viewer (The Forensic Audit)
+Best for: Official documentation. This is how enterprise system administrators track rogue processes.
+
+By default, Windows does not log every time a program opens or closes because it takes up too much hard drive space. You have to turn on "Security Auditing."
+
+Open the Start Menu, type Local Security Policy, and hit Enter.
+
+Navigate to Local Policies -> Audit Policy.
+
+Double-click Audit process tracking. Check both "Success" and "Failure". Apply and close.
+
+Run your demo.
+
+Open Event Viewer -> Windows Logs -> Security.
+
+What to look for: You will now see Event ID 4688 (A new process has been created) when your apps start, and Event ID 4689 (A process has exited) when the watchdog kills the app.
+
+How to use this for your B.Tech Project
+If you include screenshots of ProcMon or API Monitor in your project report, your evaluator will be floored. Instead of just saying "My code works," you can put a screenshot of API Monitor in your report with a caption like:
+
+"Figure 4: API Monitor intercepting the malicious WriteProcessMemory call from hack.exe, confirming the exact hexadecimal address targeted during the breach simulation."

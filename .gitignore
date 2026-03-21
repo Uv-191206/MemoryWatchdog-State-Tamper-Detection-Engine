@@ -1,0 +1,4 @@
+*.exe
+*.o
+security_audit_log.txt
+*.mp4
